@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Basket Case Grocer · Label Builder</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root { --ink:#1f1f1f; --muted:#6b6b6b; --line:#d8d4cc; --accent:#5a6b47; --bg:#faf7f2; --danger:#a23a2c; }
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--ink);
+    font: 16px/1.5 "Iowan Old Style", "Hoefler Text", Georgia, serif;
+    min-height:100vh;
+  }
+  header {
+    padding: 36px 24px 16px; max-width:760px; margin:0 auto;
+    display:flex; align-items:flex-end; justify-content:space-between; gap:24px;
+  }
+  header .titlewrap h1 { margin:0; font-size: 32px; letter-spacing:0.5px; }
+  header .titlewrap p { margin: 6px 0 0; color: var(--muted); font-size: 15px; }
+  main { max-width:760px; margin:0 auto; padding: 0 24px 64px; }
+  fieldset {
+    border:1px solid var(--line); border-radius: 6px; padding: 20px 24px 24px;
+    background: white; margin: 24px 0 0;
+  }
+  legend { padding: 0 8px; color: var(--accent); font-weight:bold;
+           letter-spacing:0.5px; text-transform:uppercase; font-size: 13px; }
+  label { display:block; margin: 14px 0 4px; font-size: 14px; color: var(--ink); }
+  label .hint { color: var(--muted); font-weight: normal; font-size: 12px; }
+  input[type=text], textarea {
+    width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:4px;
+    background: white; font: inherit; font-size: 14px; color: var(--ink);
+    transition: border-color .15s;
+  }
+  input:focus, textarea:focus { outline:none; border-color: var(--accent); }
+  textarea { min-height: 70px; resize: vertical; font: inherit; }
+  .row { display:flex; gap:16px; }
+  .row > * { flex:1; }
+  .actions { margin-top: 24px; display:flex; gap:12px; flex-wrap: wrap; align-items:center; }
+  button {
+    background: var(--ink); color: var(--bg); border:none; padding: 12px 24px;
+    border-radius: 4px; font: inherit; font-weight: bold; letter-spacing: 0.5px;
+    cursor: pointer; font-size: 14px;
+  }
+  button[disabled] { opacity:.5; cursor:not-allowed; }
+  .status { color: var(--muted); font-size: 13px; }
+  .status.error { color: var(--danger); }
+  .status.ok { color: var(--accent); }
+  details { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 16px; font-size: 13px; color: var(--muted); }
+  details summary { cursor: pointer; color: var(--ink); }
+  details p, details li { margin: 8px 0; line-height: 1.55; }
+  footer { text-align:center; color: var(--muted); font-size: 12px; padding: 32px 0 24px; }
+  .price-row { display: flex; align-items: center; gap: 8px; }
+  .price-row .dollar { color: var(--muted); font-size: 18px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="titlewrap">
+    <h1>Label Builder</h1>
+    <p>Basket Case Grocer · 9-up sheet for OL9016WJ die-cut labels</p>
+  </div>
+</header>
+<main>
+  <fieldset>
+    <legend>Product</legend>
+    <label>Product name <span class="hint">(rendered in ALL CAPS on the label)</span>
+      <input id="product" type="text" placeholder="e.g. Boursin Grapes" autocomplete="off">
+    </label>
+    <label>Ingredients <span class="hint">(comma-separated)</span>
+      <textarea id="ingredients" placeholder="e.g. Green Grapes, Prosciutto, Milk, Garlic, Pepper, Parsley, Chives"></textarea>
+    </label>
+    <div class="row">
+      <label>Price <span class="hint">(number — $ added automatically)</span>
+        <div class="price-row"><span class="dollar">$</span><input id="price" type="text" placeholder="9" autocomplete="off"></div>
+      </label>
+      <label>Allergens <span class="hint">(optional)</span>
+        <input id="allergens" type="text" placeholder="Contains: nuts" autocomplete="off">
+      </label>
+    </div>
+    <div class="actions">
+      <button id="build">Build &amp; Download PDF</button>
+      <span id="status" class="status">Print at <strong>Actual Size / 100%</strong> — never Fit to Page.</span>
+    </div>
+  </fieldset>
+
+  <details>
+    <summary>Print instructions for the team</summary>
+    <ul>
+      <li>Open the downloaded PDF in Preview (Mac) or Adobe Reader (Windows).</li>
+      <li>Choose <strong>Actual Size / 100%</strong> in the Print dialog (NEVER "Fit to Page").</li>
+      <li>Load a fresh OL9016WJ sheet face-up in the printer's manual feed.</li>
+      <li>Test on plain paper first if it's been a while — hold it up to a window against a label sheet to verify alignment.</li>
+    </ul>
+  </details>
+</main>
+<footer>Basket Case Grocer · 1801 5th Ave N Nashville</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+function setStatus(msg, kind) {
+  const el = $('status'); el.innerHTML = msg; el.className = "status " + (kind || "");
+}
+function safe(s){ return (s || "").replace(/[^A-Za-z0-9 _-]/g, "_").trim().replace(/\s+/g, "_"); }
+
+$('build').addEventListener('click', async () => {
+  const productName = $('product').value.trim();
+  const ingredients = $('ingredients').value.trim();
+  const price       = $('price').value.trim();
+  const allergens   = $('allergens').value.trim();
+  if (!productName) return setStatus("Product name is required.", "error");
+  if (!ingredients) return setStatus("Ingredients are required.", "error");
+
+  const btn = $('build'); btn.disabled = true;
+  setStatus("Building PDF...", "");
+
+  try {
+    const res = await fetch("/api/build", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ productName, ingredients, price, allergens }),
+    });
+    if (!res.ok) {
+      let msg = `${res.status}`;
+      try { msg = (await res.json()).error || msg; } catch {}
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Basket_Case_Labels_${safe(productName.toUpperCase())}.pdf`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setStatus("Downloaded. Print at <strong>Actual Size / 100%</strong>.", "ok");
+  } catch (e) {
+    setStatus("Error: " + e.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
