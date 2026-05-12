@@ -52,6 +52,11 @@
   footer { text-align:center; color: var(--muted); font-size: 12px; padding: 32px 0 24px; }
   .price-row { display: flex; align-items: center; gap: 8px; }
   .price-row .dollar { color: var(--muted); font-size: 18px; }
+  .fitcheck { margin-top: 18px; padding: 10px 14px; border-radius: 4px;
+              font-size: 13px; line-height: 1.5; border-left: 3px solid; }
+  .fitcheck.ok      { background: #f3f6ee; color: #4a5b39; border-color: var(--accent); }
+  .fitcheck.warn    { background: #fdf3ef; color: #7a2a1d; border-color: var(--danger); }
+  .fitcheck strong  { display: block; margin-bottom: 4px; }
 </style>
 </head>
 <body>
@@ -81,6 +86,7 @@
     <label>Allergens <span class="hint">(optional)</span>
       <input id="allergens" type="text" placeholder="Contains: nuts" autocomplete="off">
     </label>
+    <div id="fitcheck" class="fitcheck" hidden></div>
     <div class="actions">
       <button id="build">Build &amp; Download PDF</button>
       <span id="status" class="status">Print at <strong>Actual Size / 100%</strong> — never Fit to Page.</span>
@@ -106,6 +112,81 @@ function setStatus(msg, kind) {
 }
 function safe(s){ return (s || "").replace(/[^A-Za-z0-9 _-]/g, "_").trim().replace(/\s+/g, "_"); }
 
+let _previewLastKey = "";
+let _previewLastFit = true;
+
+function inputsKey() {
+  return [
+    $('product').value.trim(),
+    $('ingredients').value.trim(),
+    $('price').value.trim(),
+    $('allergens').value.trim(),
+  ].join("\u0001");
+}
+
+function renderFitcheck(audit) {
+  const el = $('fitcheck');
+  if (!audit || audit.empty) { el.hidden = true; return; }
+  if (audit.fits) {
+    el.hidden = false;
+    el.className = "fitcheck ok";
+    const lines = audit.ingredientLinesTotal || 0;
+    const size = audit.ingredientFontSize;
+    let msg = `Fits the label. Ingredients render in ${lines} line${lines===1?"":"s"} at ${size}pt.`;
+    if (size < 6.5) msg += " (Auto-shrunk to fit — consider trimming for legibility.)";
+    el.innerHTML = "<strong>Looks good</strong>" + msg;
+  } else {
+    el.hidden = false;
+    el.className = "fitcheck warn";
+    const issues = [];
+    if (audit.titleFits === false) issues.push("Product name is too long — shorten it.");
+    if (audit.ingredientsFit === false) {
+      const lost = audit.ingredientLinesTotal - audit.ingredientLinesShown;
+      issues.push(`Ingredients won't all fit (${lost} line${lost===1?"":"s"} would be cut off). Shorten the list.`);
+    }
+    if (audit.allergensFit === false) issues.push("Allergens line won't fit — shorten ingredients or drop allergens.");
+    el.innerHTML = "<strong>Won't fit on the label</strong>" + issues.join("<br>");
+  }
+  _previewLastFit = !!audit.fits;
+}
+
+async function runPreview() {
+  const product = $('product').value.trim();
+  const ingredients = $('ingredients').value.trim();
+  if (!product || !ingredients) {
+    $('fitcheck').hidden = true;
+    _previewLastFit = true;
+    return;
+  }
+  const key = inputsKey();
+  if (key === _previewLastKey) return;
+  _previewLastKey = key;
+  try {
+    const res = await fetch("/api/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        productName: product,
+        ingredients,
+        price: $('price').value.trim(),
+        allergens: $('allergens').value.trim(),
+      }),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (inputsKey() === key) renderFitcheck(data);
+  } catch {}
+}
+
+let _previewTimer = null;
+function schedulePreview() {
+  clearTimeout(_previewTimer);
+  _previewTimer = setTimeout(runPreview, 350);
+}
+["product","ingredients","price","allergens"].forEach(id => {
+  $(id).addEventListener('input', schedulePreview);
+});
+
 $('build').addEventListener('click', async () => {
   const productName = $('product').value.trim();
   const ingredients = $('ingredients').value.trim();
@@ -115,6 +196,13 @@ $('build').addEventListener('click', async () => {
   const count       = Math.max(1, Math.min(99, parseInt(countRaw || "9", 10) || 9));
   if (!productName) return setStatus("Product name is required.", "error");
   if (!ingredients) return setStatus("Ingredients are required.", "error");
+
+  // Force a fresh fit-check synchronously so users can't bypass a stale preview.
+  await runPreview();
+  if (!_previewLastFit) {
+    const proceed = confirm("Heads up — the text won't all fit on the label. Build anyway?");
+    if (!proceed) return;
+  }
 
   const btn = $('build'); btn.disabled = true;
   setStatus("Building PDF...", "");

@@ -14,7 +14,7 @@ _ROOT = os.path.dirname(os.path.abspath(__file__))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from lib.label_renderer import build_sheet_bytes, safe_filename
+from lib.label_renderer import build_sheet_bytes, safe_filename, audit_label_content
 
 app = Flask(__name__, static_folder=None)
 
@@ -31,6 +31,22 @@ def download_skill():
         as_attachment=True,
         download_name="basket-case-labels.skill",
     )
+
+@app.route("/api/preview", methods=["POST"])
+def api_preview():
+    body = request.get_json(silent=True) or {}
+    product = (body.get("productName") or "").strip()
+    ingredients = (body.get("ingredients") or "").strip()
+    price = (body.get("price") or "").strip()
+    allergens = (body.get("allergens") or "").strip()
+    if not product or not ingredients:
+        return jsonify({"fits": True, "empty": True})
+    try:
+        audit = audit_label_content(product, ingredients, price, allergens)
+    except Exception as e:
+        return jsonify({"error": f"Audit failed: {e}"}), 500
+    return jsonify(audit)
+
 
 @app.route("/api/build", methods=["POST"])
 def api_build():

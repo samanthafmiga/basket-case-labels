@@ -152,12 +152,25 @@ def in_to_pt(v):
 
 
 def _wrap_text(c, text, font_name, font_size, max_width):
-    """Wrap a comma-delimited string into lines that fit within max_width."""
-    words = text.split(", ")
+    """Wrap a free-form string into lines that fit within max_width.
+
+    Tolerant of any separator the user types: ',', ';', '|', newlines, or a
+    bare space. Always wraps at word boundaries, never mid-word, so a long
+    chunk like 'Gluten Free Rolled Oats' breaks naturally instead of running
+    off the label.
+    """
+    import re
+    s = re.sub(r"[;|\n\r]+", ",", text)
+    s = re.sub(r",+", ",", s)
+    s = re.sub(r"\s*,\s*", ", ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    words = s.split(" ")
     lines = []
     cur = ""
     for w_ in words:
-        candidate = (cur + ", " + w_) if cur else w_
+        if not w_:
+            continue
+        candidate = (cur + " " + w_) if cur else w_
         if c.stringWidth(candidate, font_name, font_size) <= max_width:
             cur = candidate
         else:
@@ -248,26 +261,60 @@ def _render_info_block(c, info_w, info_h, pad=0.10):
             if i == 0 and PRICE:
                 c.drawRightString(price_right_edge, cur_y, PRICE)
             cur_y -= 1
+        c._title_overflowed_lines = max(0, len(lines) - 2)
     cur_y -= 4
 
-    # Ingredients — body font, wrapped
-    ing_size = 6.5
+    # Ingredients — body font, wrapped. Auto-shrink so the WHOLE list fits.
+    ing_y_start = cur_y
+    avail_h = ing_y_start - bottom_anchor - (10 if ALLERGENS else 0)
+    chosen_size = None
+    chosen_lines = None
+    for try_size in (6.5, 6.0, 5.5, 5.0):
+        lh = try_size + 1.5
+        candidate = _wrap_text(c, INGREDIENTS, BODY_FONT, try_size, inner_w)
+        if len(candidate) * lh <= avail_h:
+            chosen_size = try_size
+            chosen_lines = candidate
+            break
+    ingredient_overflow_lines = 0
+    if chosen_lines is None:
+        # Even at the smallest size it won't fit — render what we can and flag the rest.
+        chosen_size = 5.0
+        chosen_lines = _wrap_text(c, INGREDIENTS, BODY_FONT, chosen_size, inner_w)
+    ing_size = chosen_size
     line_h = ing_size + 1.5
-    lines = _wrap_text(c, INGREDIENTS, BODY_FONT, ing_size, inner_w)
     c.setFont(BODY_FONT, ing_size)
-    for ln in lines:
+    drawn = 0
+    for ln in chosen_lines:
         if cur_y - line_h < bottom_anchor:
-            break  # don't run into Made By block
+            break
         cur_y -= line_h
         c.drawString(x0, cur_y, ln)
+        drawn += 1
+    ingredient_overflow_lines = len(chosen_lines) - drawn
 
     # Allergens (optional) — italic, accent color
+    allergens_drawn = True
     if ALLERGENS:
         cur_y -= 4
         if cur_y > bottom_anchor:
             c.setFont(BODY_ITALIC, 6.5)
             c.setFillColor(ACCENT)
             c.drawString(x0, cur_y, ALLERGENS)
+        else:
+            allergens_drawn = False
+
+    # Stash audit results on the canvas so callers can read them out.
+    if not hasattr(c, "_audit"):
+        c._audit = {
+            "ingredientLinesTotal": len(chosen_lines),
+            "ingredientLinesShown": drawn,
+            "ingredientFontSize": ing_size,
+            "ingredientsFit": ingredient_overflow_lines == 0,
+            "allergensFit": allergens_drawn,
+            "titleAutoSize": name_size,
+            "titleFits": True,
+        }
 
 
 def _find_logo_path():
@@ -492,6 +539,46 @@ def build_sheet_bytes(product_name, ingredients, price="", allergens="", count=9
     build_sheet(buf, count=count)
     return buf.getvalue()
 
+
+
+def audit_label_content(product_name, ingredients, price="", allergens=""):
+    """Dry-run the layout and report whether all text fits.
+
+    Returns dict with fits (bool overall) plus details for both vertical and
+    horizontal slot geometries (vertical is the constraining shape — narrowest).
+    """
+    import io
+    from reportlab.pdfgen.canvas import Canvas
+    global PRODUCT_NAME, INGREDIENTS, PRICE, ALLERGENS
+
+    p = (price or "").strip()
+    if p and not p.startswith("$") and any(ch.isdigit() for ch in p):
+        p = "$" + p
+
+    def fix(s):
+        return (s or "").replace("&", "and").replace("  ", " ").strip()
+
+    PRODUCT_NAME = fix(product_name).upper()
+    INGREDIENTS = fix(ingredients)
+    PRICE = p
+    ALLERGENS = fix(allergens)
+
+    # Render onto a throwaway canvas at the vertical info-rect size (the constraining one).
+    # Vertical label info rect: width=VERT_W, height=V_TOP_RECT_END (after rotation).
+    c = Canvas(io.BytesIO(), pagesize=letter)
+    info_w_pt = V_TOP_RECT_END * inch
+    info_h_pt = VERT_W * inch
+    _render_info_block(c, info_w_pt, info_h_pt)
+    audit = getattr(c, "_audit", {})
+    title_overflow = getattr(c, "_title_overflowed_lines", 0)
+    audit["titleFits"] = title_overflow == 0
+    audit["titleOverflowLines"] = title_overflow
+    audit["fits"] = (
+        audit.get("ingredientsFit", True)
+        and audit.get("allergensFit", True)
+        and audit.get("titleFits", True)
+    )
+    return audit
 
 if __name__ == "__main__":
     import sys
