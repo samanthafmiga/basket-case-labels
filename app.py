@@ -1,7 +1,8 @@
 """
 Basket Case Labels — Vercel Python entrypoint (Flask app).
-GET  /            → form UI (index.html)
-POST /api/build   → JSON {productName, ingredients, price, allergens?} → PDF download
+GET  /                          → form UI (index.html)
+GET  /basket-case-labels.skill  → download installable skill bundle
+POST /api/build                 → JSON {productName, ingredients, price, allergens?} → PDF download
 """
 import io
 import os
@@ -20,6 +21,16 @@ app = Flask(__name__, static_folder=None)
 @app.route("/", methods=["GET"])
 def index():
     return send_from_directory(_ROOT, "index.html")
+
+@app.route("/basket-case-labels.skill", methods=["GET"])
+def download_skill():
+    return send_from_directory(
+        _ROOT,
+        "basket-case-labels.skill",
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name="basket-case-labels.skill",
+    )
 
 @app.route("/api/build", methods=["POST"])
 def api_build():
