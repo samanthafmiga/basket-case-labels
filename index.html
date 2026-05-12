@@ -74,10 +74,13 @@
       <label>Price <span class="hint">(number — $ added automatically)</span>
         <div class="price-row"><span class="dollar">$</span><input id="price" type="text" placeholder="9" autocomplete="off"></div>
       </label>
-      <label>Allergens <span class="hint">(optional)</span>
-        <input id="allergens" type="text" placeholder="Contains: nuts" autocomplete="off">
+      <label>Labels needed <span class="hint">(9 per sheet — extra labels stay blank)</span>
+        <input id="count" type="number" min="1" max="99" value="9" autocomplete="off">
       </label>
     </div>
+    <label>Allergens <span class="hint">(optional)</span>
+      <input id="allergens" type="text" placeholder="Contains: nuts" autocomplete="off">
+    </label>
     <div class="actions">
       <button id="build">Build &amp; Download PDF</button>
       <span id="status" class="status">Print at <strong>Actual Size / 100%</strong> — never Fit to Page.</span>
@@ -108,6 +111,8 @@ $('build').addEventListener('click', async () => {
   const ingredients = $('ingredients').value.trim();
   const price       = $('price').value.trim();
   const allergens   = $('allergens').value.trim();
+  const countRaw    = $('count').value.trim();
+  const count       = Math.max(1, Math.min(99, parseInt(countRaw || "9", 10) || 9));
   if (!productName) return setStatus("Product name is required.", "error");
   if (!ingredients) return setStatus("Ingredients are required.", "error");
 
@@ -118,7 +123,7 @@ $('build').addEventListener('click', async () => {
     const res = await fetch("/api/build", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productName, ingredients, price, allergens }),
+      body: JSON.stringify({ productName, ingredients, price, allergens, count }),
     });
     if (!res.ok) {
       let msg = `${res.status}`;

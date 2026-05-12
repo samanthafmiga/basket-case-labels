@@ -39,12 +39,17 @@ def api_build():
     ingredients = (body.get("ingredients") or "").strip()
     price = (body.get("price") or "").strip()
     allergens = (body.get("allergens") or "").strip()
+    raw_count = body.get("count", 9)
+    try:
+        count = max(1, min(99, int(raw_count)))
+    except (TypeError, ValueError):
+        count = 9
     if not product:
         return jsonify({"error": "productName is required"}), 400
     if not ingredients:
         return jsonify({"error": "ingredients is required"}), 400
     try:
-        pdf = build_sheet_bytes(product, ingredients, price, allergens)
+        pdf = build_sheet_bytes(product, ingredients, price, allergens, count=count)
     except Exception as e:
         return jsonify({"error": f"Render failed: {e}"}), 500
     fname = f"Basket_Case_Labels_{safe_filename(product.upper())}.pdf"

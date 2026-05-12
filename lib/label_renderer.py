@@ -424,32 +424,46 @@ def draw_dieline_outline_for_label(c, x, y, w, h, vertical=True):
                (w - H_RIGHT_RECT_START)*inch, h*inch, stroke=1, fill=0)
 
 
-def build_sheet(out_path):
+def build_sheet(out_path, count=9):
+    """Render `count` labels across as many letter-sized 9-up sheets as needed.
+
+    Slots are filled in order: 6 vertical (top of sheet) first, then 3
+    horizontal (bottom). Any unused slots on the final sheet stay blank so
+    the remaining die-cut labels can be reused on a future run.
+    """
     c = canvas.Canvas(out_path, pagesize=letter)
     c.setTitle("Basket Case Grocer — OL9016WJ Prepared Foods Labels")
 
-    # 6 vertical labels at top
-    for vx in VERT_X:
-        if SHOW_DIELINE:
-            draw_dieline_outline_for_label(c, vx, VERT_Y, VERT_W, VERT_H, vertical=True)
-        draw_vertical_label(c, vx, VERT_Y, VERT_W, VERT_H)
+    count = max(1, int(count))
+    pages = (count + 8) // 9
+    remaining = count
+    for _ in range(pages):
+        n_this_page = min(9, remaining)
+        # 6 vertical labels (slot indices 0..5)
+        for i, vx in enumerate(VERT_X):
+            if i < n_this_page:
+                if SHOW_DIELINE:
+                    draw_dieline_outline_for_label(c, vx, VERT_Y, VERT_W, VERT_H, vertical=True)
+                draw_vertical_label(c, vx, VERT_Y, VERT_W, VERT_H)
+        # 3 horizontal labels (slot indices 6..8)
+        for i, hy in enumerate(HORIZ_Y):
+            if (i + 6) < n_this_page:
+                if SHOW_DIELINE:
+                    draw_dieline_outline_for_label(c, HORIZ_X, hy, HORIZ_W, HORIZ_H, vertical=False)
+                draw_horizontal_label(c, HORIZ_X, hy, HORIZ_W, HORIZ_H)
+        remaining -= n_this_page
+        c.showPage()
 
-    # 3 horizontal labels at bottom
-    for hy in HORIZ_Y:
-        if SHOW_DIELINE:
-            draw_dieline_outline_for_label(c, HORIZ_X, hy, HORIZ_W, HORIZ_H, vertical=False)
-        draw_horizontal_label(c, HORIZ_X, hy, HORIZ_W, HORIZ_H)
-
-    c.showPage()
     c.save()
-    print(f"Wrote: {out_path}")
+    if isinstance(out_path, str):
+        print(f"Wrote: {out_path}")
 
 
 def safe_filename(s):
     return "".join(ch if ch.isalnum() or ch in (" ", "_", "-") else "_" for ch in s).strip().replace(" ", "_")
 
 
-def build_sheet_bytes(product_name, ingredients, price="", allergens=""):
+def build_sheet_bytes(product_name, ingredients, price="", allergens="", count=9):
     """Library entry point used by the web service.
 
     Renders one 9-up sheet using the provided fields and returns the PDF bytes.
@@ -475,7 +489,7 @@ def build_sheet_bytes(product_name, ingredients, price="", allergens=""):
     ALLERGENS = fix(allergens)
 
     buf = io.BytesIO()
-    build_sheet(buf)
+    build_sheet(buf, count=count)
     return buf.getvalue()
 
 
