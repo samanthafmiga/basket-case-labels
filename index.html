@@ -52,6 +52,15 @@
   footer { text-align:center; color: var(--muted); font-size: 12px; padding: 32px 0 24px; }
   .price-row { display: flex; align-items: center; gap: 8px; }
   .price-row .dollar { color: var(--muted); font-size: 18px; }
+  .product-row { display: flex; gap: 8px; align-items: stretch; }
+  .product-row input { flex: 1; }
+  .btn-secondary {
+    background: white; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 4px;
+    padding: 0 14px; font: inherit; font-size: 13px;
+    cursor: pointer; white-space: nowrap;
+  }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
   .fitcheck { margin-top: 18px; padding: 10px 14px; border-radius: 4px;
               font-size: 13px; line-height: 1.5; border-left: 3px solid; }
   .fitcheck.ok      { background: #f3f6ee; color: #4a5b39; border-color: var(--accent); }
@@ -70,8 +79,11 @@
   <fieldset>
     <legend>Product</legend>
     <label>Product name <span class="hint">(<span id="repoHint">type to search saved labels</span> · rendered ALL CAPS)</span>
-      <input id="product" type="text" placeholder="e.g. Boursin Grapes" list="labelOptions" autocomplete="off">
-      <datalist id="labelOptions"></datalist>
+      <div class="product-row">
+        <input id="product" type="text" placeholder="e.g. Boursin Grapes" list="labelOptions" autocomplete="off">
+        <button id="clearBtn" type="button" class="btn-secondary" title="Clear all fields">Clear</button>
+        <datalist id="labelOptions"></datalist>
+      </div>
     </label>
     <label>Ingredients <span class="hint">(comma-separated)</span>
       <textarea id="ingredients" placeholder="e.g. Green Grapes, Prosciutto, Milk, Garlic, Pepper, Parsley, Chives"></textarea>
@@ -243,6 +255,17 @@ function schedulePreview() {
 });
 $('product').addEventListener('input', onProductChange);
 $('product').addEventListener('change', onProductChange);
+
+$('clearBtn').addEventListener('click', () => {
+  $('product').value = "";
+  $('ingredients').value = "";
+  $('price').value = "";
+  $('allergens').value = "";
+  $('fitcheck').hidden = true;
+  _previewLastKey = "";
+  _previewLastFit = true;
+  $('product').focus();
+});
 
 $('build').addEventListener('click', async () => {
   const productName = $('product').value.trim();
