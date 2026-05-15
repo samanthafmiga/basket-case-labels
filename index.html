@@ -69,8 +69,9 @@
 <main>
   <fieldset>
     <legend>Product</legend>
-    <label>Product name <span class="hint">(rendered in ALL CAPS on the label)</span>
-      <input id="product" type="text" placeholder="e.g. Boursin Grapes" autocomplete="off">
+    <label>Product name <span class="hint">(<span id="repoHint">type to search saved labels</span> · rendered ALL CAPS)</span>
+      <input id="product" type="text" placeholder="e.g. Boursin Grapes" list="labelOptions" autocomplete="off">
+      <datalist id="labelOptions"></datalist>
     </label>
     <label>Ingredients <span class="hint">(comma-separated)</span>
       <textarea id="ingredients" placeholder="e.g. Green Grapes, Prosciutto, Milk, Garlic, Pepper, Parsley, Chives"></textarea>
@@ -107,6 +108,60 @@
 
 <script>
 const $ = (id) => document.getElementById(id);
+
+// ============ Saved-label repository ============
+let _savedLabels = [];
+
+function refreshDatalist() {
+  const dl = $('labelOptions');
+  dl.innerHTML = "";
+  for (const l of _savedLabels) {
+    const opt = document.createElement('option');
+    opt.value = l.productName;
+    dl.appendChild(opt);
+  }
+}
+
+function findSaved(name) {
+  const key = (name || "").trim().toLowerCase();
+  if (!key) return null;
+  return _savedLabels.find(l => (l.productName || "").trim().toLowerCase() === key) || null;
+}
+
+function applySaved(label) {
+  $('product').value     = label.productName  || "";
+  $('ingredients').value = label.ingredients  || "";
+  $('price').value       = (label.price || "").replace(/^\$/, "");
+  $('allergens').value   = label.allergens    || "";
+  schedulePreview();
+}
+
+async function loadSavedLabels() {
+  try {
+    const res = await fetch("/api/labels");
+    if (!res.ok) return;
+    const data = await res.json();
+    _savedLabels = Array.isArray(data.labels) ? data.labels : [];
+    _savedLabels.sort((a, b) => (a.productName || "").localeCompare(b.productName || ""));
+    refreshDatalist();
+    const hint = $('repoHint');
+    if (hint) {
+      const n = _savedLabels.length;
+      const persistNote = data.kvEnabled ? "" : " · saves don't persist yet (Vercel KV not connected)";
+      hint.textContent = `${n} saved label${n === 1 ? "" : "s"} — type to search${persistNote}`;
+    }
+  } catch {}
+}
+loadSavedLabels();
+
+// When the product field changes, see if it matches a saved label and autofill.
+function onProductChange() {
+  const v = $('product').value;
+  const match = findSaved(v);
+  if (match) applySaved(match);
+}
+// Run on Enter, blur, and on input (in case the datalist selects via click).
+
 function setStatus(msg, kind) {
   const el = $('status'); el.innerHTML = msg; el.className = "status " + (kind || "");
 }
@@ -186,6 +241,8 @@ function schedulePreview() {
 ["product","ingredients","price","allergens"].forEach(id => {
   $(id).addEventListener('input', schedulePreview);
 });
+$('product').addEventListener('input', onProductChange);
+$('product').addEventListener('change', onProductChange);
 
 $('build').addEventListener('click', async () => {
   const productName = $('product').value.trim();
@@ -225,7 +282,7 @@ $('build').addEventListener('click', async () => {
     a.download = `Basket_Case_Labels_${safe(productName.toUpperCase())}.pdf`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    setStatus("Downloaded. Print at <strong>Actual Size / 100%</strong>.", "ok");
+    setStatus("Downloaded. Print at <strong>Actual Size / 100%</strong>.", "ok"); loadSavedLabels();
   } catch (e) {
     setStatus("Error: " + e.message, "error");
   } finally {

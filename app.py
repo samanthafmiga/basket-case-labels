@@ -15,6 +15,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from lib.label_renderer import build_sheet_bytes, safe_filename, audit_label_content
+from lib import kv_store
 
 app = Flask(__name__, static_folder=None)
 
@@ -48,6 +49,11 @@ def api_preview():
     return jsonify(audit)
 
 
+@app.route("/api/labels", methods=["GET"])
+def api_labels():
+    return jsonify({"labels": kv_store.get_labels(), "kvEnabled": kv_store.kv_enabled()})
+
+
 @app.route("/api/build", methods=["POST"])
 def api_build():
     body = request.get_json(silent=True) or {}
@@ -68,6 +74,17 @@ def api_build():
         pdf = build_sheet_bytes(product, ingredients, price, allergens, count=count)
     except Exception as e:
         return jsonify({"error": f"Render failed: {e}"}), 500
+    # Auto-save to the shared label repository so future builds can recall it.
+    try:
+        kv_store.add_label({
+            "productName": product,
+            "ingredients": ingredients,
+            "price": price,
+            "allergens": allergens,
+        })
+    except Exception:
+        pass  # Never let a save failure block the download.
+
     fname = f"Basket_Case_Labels_{safe_filename(product.upper())}.pdf"
     return send_file(
         io.BytesIO(pdf),
