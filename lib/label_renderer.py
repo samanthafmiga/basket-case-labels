@@ -287,7 +287,7 @@ def _render_info_block(c, info_w, info_h, pad=0.10):
     allergen_size = 6.5
     allergen_lh = allergen_size + 1.5
     allergen_gap = 4  # pt of breathing room above the allergen block
-    pre_allergen_lines = _wrap_text(c, ALLERGENS, BODY_ITALIC, allergen_size, inner_w) if ALLERGENS else []
+    pre_allergen_lines = _wrap_text(c, ALLERGENS, "Helvetica-Bold", allergen_size, inner_w) if ALLERGENS else []
     allergen_block_h = (len(pre_allergen_lines) * allergen_lh + allergen_gap) if ALLERGENS else 0
 
     # ---- Ingredients — body font, wrapped. Auto-shrink so the WHOLE list fits. ----
@@ -318,21 +318,21 @@ def _render_info_block(c, info_w, info_h, pad=0.10):
         drawn += 1
     ingredient_overflow_lines = len(chosen_lines) - drawn
 
-    # ---- Allergens — italic, accent color, drop a full ingredient line below the last ----
+    # ---- Allergens — bold, ink color, drop a full ingredient line below the last ----
     allergens_drawn_lines = 0
     if ALLERGENS:
         # Move below the last ingredient line + gap, so we don't overlap.
         cur_y -= (line_h - (line_h - allergen_lh)) + allergen_gap  # = allergen_lh + allergen_gap
-        c.setFont(BODY_ITALIC, allergen_size)
-        c.setFillColor(ACCENT)
+        # Helvetica-Bold is a built-in PDF font, so this is reliably bold
+        # even when Faraz Modern (which has no bold variant) is the body font.
+        c.setFont("Helvetica-Bold", allergen_size)
+        c.setFillColor(INK)
         for ln in pre_allergen_lines:
             if cur_y < bottom_anchor:
                 break
             c.drawString(x0, cur_y, ln)
             allergens_drawn_lines += 1
             cur_y -= allergen_lh
-        # Restore ink color for any future draws on this canvas instance.
-        c.setFillColor(INK)
     allergens_fit = (allergens_drawn_lines == len(pre_allergen_lines))
 
     # Stash audit results on the canvas so callers can read them out.
