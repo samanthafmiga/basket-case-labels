@@ -77,6 +77,21 @@
   }
   .slot:hover:not(.selected) { border-color: var(--accent); color: var(--accent); }
   .slot-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .chip-group {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin: 6px 0 10px;
+  }
+  .chip {
+    background: white; border: 1px solid var(--line); border-radius: 999px;
+    padding: 6px 12px; font: inherit; font-size: 12.5px; color: var(--muted);
+    cursor: pointer; transition: background .12s, border-color .12s, color .12s;
+    white-space: nowrap;
+  }
+  .chip:hover:not(.selected) { border-color: var(--accent); color: var(--accent); }
+  .chip.selected {
+    background: var(--accent); border-color: var(--accent); color: white;
+  }
+  .chip.selected:hover { filter: brightness(1.05); }
   .btn-secondary {
     background: white; color: var(--ink);
     border: 1px solid var(--line); border-radius: 4px;
@@ -115,10 +130,31 @@
       <label>Price <span class="hint">(number — $ added automatically)</span>
         <div class="price-row"><span class="dollar">$</span><input id="price" type="text" placeholder="9" autocomplete="off"></div>
       </label>
-      <label>Allergens <span class="hint">(optional)</span>
-        <input id="allergens" type="text" placeholder="Contains: nuts" autocomplete="off">
-      </label>
     </div>
+
+    <label>Allergens &amp; claims <span class="hint">(tap to toggle — selected items print on the label)</span></label>
+    <div class="chip-group" id="allergenChips" data-group="Allergens">
+      <button type="button" class="chip" data-value="Contains Nuts">Contains Nuts</button>
+      <button type="button" class="chip" data-value="Contains Peanuts">Contains Peanuts</button>
+      <button type="button" class="chip" data-value="Contains Dairy">Contains Dairy</button>
+      <button type="button" class="chip" data-value="Contains Eggs">Contains Eggs</button>
+      <button type="button" class="chip" data-value="Contains Soy">Contains Soy</button>
+      <button type="button" class="chip" data-value="Contains Wheat">Contains Wheat</button>
+      <button type="button" class="chip" data-value="Contains Sesame">Contains Sesame</button>
+      <button type="button" class="chip" data-value="Produced in a Kitchen that uses Nuts">Produced in Kitchen w/ Nuts</button>
+    </div>
+    <div class="chip-group" id="claimChips" data-group="Claims">
+      <button type="button" class="chip" data-value="Gluten Free">Gluten Free</button>
+      <button type="button" class="chip" data-value="Gluten Friendly">Gluten Friendly</button>
+      <button type="button" class="chip" data-value="Dairy Free">Dairy Free</button>
+      <button type="button" class="chip" data-value="Nut Free">Nut Free</button>
+      <button type="button" class="chip" data-value="Vegan">Vegan</button>
+      <button type="button" class="chip" data-value="Vegetarian">Vegetarian</button>
+    </div>
+    <label>Custom (optional) <span class="hint">(any extra text — appended after the chips)</span>
+      <input id="allergensCustom" type="text" placeholder="e.g. Contains: cashew, pecan" autocomplete="off">
+    </label>
+    <input id="allergens" type="hidden" value="">
     <div class="row">
       <label>Packed On <span class="hint">(required)</span>
         <input id="packedOn" type="date" required autocomplete="off">
@@ -196,8 +232,39 @@ function applySaved(label) {
   $('product').value     = label.productName  || "";
   $('ingredients').value = label.ingredients  || "";
   $('price').value       = (label.price || "").replace(/^\$/, "");
-  $('allergens').value   = label.allergens    || "";
+  hydrateAllergensFromString(label.allergens || "");
   schedulePreview();
+}
+
+function gatherAllergenChips() {
+  return Array.from(document.querySelectorAll('.chip.selected')).map(c => c.dataset.value);
+}
+
+function syncAllergensHidden() {
+  const chips = gatherAllergenChips();
+  const custom = ($('allergensCustom').value || "").trim();
+  const parts = [...chips];
+  if (custom) parts.push(custom);
+  $('allergens').value = parts.join(", ");
+}
+
+function hydrateAllergensFromString(s) {
+  // Mark chips matching any comma-separated piece, dump the rest in the Custom field.
+  document.querySelectorAll('.chip').forEach(c => { c.classList.remove('selected'); c.setAttribute('aria-pressed','false'); });
+  $('allergensCustom').value = "";
+  const pieces = (s || "").split(/\s*,\s*/).map(p => p.trim()).filter(Boolean);
+  const remaining = [];
+  for (const piece of pieces) {
+    const chip = Array.from(document.querySelectorAll('.chip')).find(c => c.dataset.value.toLowerCase() === piece.toLowerCase());
+    if (chip) {
+      chip.classList.add('selected');
+      chip.setAttribute('aria-pressed','true');
+    } else {
+      remaining.push(piece);
+    }
+  }
+  if (remaining.length) $('allergensCustom').value = remaining.join(", ");
+  syncAllergensHidden();
 }
 
 async function loadSavedLabels() {
@@ -315,6 +382,8 @@ $('clearBtn').addEventListener('click', () => {
   $('ingredients').value = "";
   $('price').value = "";
   $('allergens').value = "";
+  $('allergensCustom').value = "";
+  document.querySelectorAll('.chip').forEach(c => { c.classList.remove('selected'); c.setAttribute('aria-pressed','false'); });
   $('fitcheck').hidden = true;
   _previewLastKey = "";
   _previewLastFit = true;
@@ -360,6 +429,18 @@ $('selNone').addEventListener('click', () => {
   updateSlotCount();
 });
 ["packedOn","bestBy"].forEach(id => $(id).addEventListener('change', schedulePreview));
+
+// Allergens chip picker — toggle selection, keep the hidden #allergens value fresh.
+document.querySelectorAll('.chip').forEach(c => {
+  c.setAttribute('aria-pressed', 'false');
+  c.addEventListener('click', () => {
+    c.classList.toggle('selected');
+    c.setAttribute('aria-pressed', c.classList.contains('selected'));
+    syncAllergensHidden();
+    schedulePreview();
+  });
+});
+$('allergensCustom').addEventListener('input', () => { syncAllergensHidden(); schedulePreview(); });
 
 $('build').addEventListener('click', async () => {
   const productName = $('product').value.trim();
