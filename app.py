@@ -40,10 +40,12 @@ def api_preview():
     ingredients = (body.get("ingredients") or "").strip()
     price = (body.get("price") or "").strip()
     allergens = (body.get("allergens") or "").strip()
+    packed_on = (body.get("packedOn") or "").strip()
+    best_by = (body.get("bestBy") or "").strip()
     if not product or not ingredients:
         return jsonify({"fits": True, "empty": True})
     try:
-        audit = audit_label_content(product, ingredients, price, allergens)
+        audit = audit_label_content(product, ingredients, price, allergens, packed_on, best_by)
     except Exception as e:
         return jsonify({"error": f"Audit failed: {e}"}), 500
     return jsonify(audit)
@@ -61,17 +63,28 @@ def api_build():
     ingredients = (body.get("ingredients") or "").strip()
     price = (body.get("price") or "").strip()
     allergens = (body.get("allergens") or "").strip()
-    raw_count = body.get("count", 9)
-    try:
-        count = max(1, min(99, int(raw_count)))
-    except (TypeError, ValueError):
-        count = 9
+    packed_on = (body.get("packedOn") or "").strip()
+    best_by = (body.get("bestBy") or "").strip()
+    raw_slots = body.get("slots")
+    if isinstance(raw_slots, list):
+        slots = [int(s) for s in raw_slots if isinstance(s, int) or (isinstance(s, str) and s.isdigit())]
+        slots = [s for s in slots if 1 <= s <= 9]
+    else:
+        slots = list(range(1, 10))
+    if not slots:
+        slots = list(range(1, 10))
+
     if not product:
         return jsonify({"error": "productName is required"}), 400
     if not ingredients:
         return jsonify({"error": "ingredients is required"}), 400
+    if not packed_on:
+        return jsonify({"error": "packedOn is required"}), 400
+    if not best_by:
+        return jsonify({"error": "bestBy is required"}), 400
+
     try:
-        pdf = build_sheet_bytes(product, ingredients, price, allergens, count=count)
+        pdf = build_sheet_bytes(product, ingredients, price, allergens, packed_on, best_by, slots=slots)
     except Exception as e:
         return jsonify({"error": f"Render failed: {e}"}), 500
     # Auto-save to the shared label repository so future builds can recall it.

@@ -67,6 +67,8 @@ PRODUCT_NAME = "CHARRED LEMON AND PARSLEY POTATO SALAD"
 INGREDIENTS  = "Potato, Dijon, Parsley, Lemon, Olive Oil, Garlic, Capers, Salt, Pepper"
 PRICE        = ""   # e.g. "$9"  or  "$12.50"  — leave "" to omit
 ALLERGENS    = ""   # leave empty if you want to skip; otherwise e.g. "Contains: nuts, eggs"
+PACKED_ON    = ""   # e.g. "5/15" — printed as "Packed: 5/15"
+BEST_BY      = ""   # e.g. "5/22" — printed as "Best By: 5/22"
 # =============================================================
 
 # Always-on store info shown above the logo on the long edge of the label
@@ -213,7 +215,24 @@ def _render_info_block(c, info_w, info_h, pad=0.10):
     # Line 2 sits at made_y, line 1 just above it
     c.drawString(x0, made_y, MADE_BY_LINE_2)
     c.drawString(x0, made_y + made_h, MADE_BY_LINE_1)
-    bottom_anchor = made_y + made_h * 2 + MADE_BY_GAP_ABOVE
+    made_top = made_y + made_h * 2
+
+    # Dates line (optional) — sits above Made By, below ingredients.
+    dates_h = 0
+    if PACKED_ON or BEST_BY:
+        date_size = 6.0
+        date_y = made_top + 2  # tiny gap above Made By
+        c.setFont(BODY_BOLD, date_size)
+        c.setFillColor(INK)
+        parts = []
+        if PACKED_ON:
+            parts.append(f"Packed: {PACKED_ON}")
+        if BEST_BY:
+            parts.append(f"Best By: {BEST_BY}")
+        c.drawString(x0, date_y, "  ·  ".join(parts))
+        dates_h = date_size + 3
+
+    bottom_anchor = made_top + dates_h + MADE_BY_GAP_ABOVE
 
     # ---- Top-anchored: Product name + price (same line) + ingredients ----
     cur_y = y_top
@@ -471,36 +490,43 @@ def draw_dieline_outline_for_label(c, x, y, w, h, vertical=True):
                (w - H_RIGHT_RECT_START)*inch, h*inch, stroke=1, fill=0)
 
 
-def build_sheet(out_path, count=9):
-    """Render `count` labels across as many letter-sized 9-up sheets as needed.
+def build_sheet(out_path, slots=None):
+    """Render one letter-sized sheet with content in the slots listed in `slots`.
 
-    Slots are filled in order: 6 vertical (top of sheet) first, then 3
-    horizontal (bottom). Any unused slots on the final sheet stay blank so
-    the remaining die-cut labels can be reused on a future run.
+    Slot numbering (matches the OL9016WJ layout the staff sees on the bench):
+        1..6 = the 6 vertical labels at the top of the sheet (left → right)
+        7..9 = the 3 horizontal labels at the bottom (top → bottom)
+
+    `slots=None` (the default) fills all 9 — same as the prior all-slots
+    behavior. Slots that aren't listed stay blank so the remaining die-cut
+    labels on the sheet can be reused on a future run.
     """
+    if slots is None:
+        slots = list(range(1, 10))
+    slots = {int(s) for s in slots if 1 <= int(s) <= 9}
+    if not slots:
+        slots = {1}  # always render at least one label
+
     c = canvas.Canvas(out_path, pagesize=letter)
     c.setTitle("Basket Case Grocer — OL9016WJ Prepared Foods Labels")
 
-    count = max(1, int(count))
-    pages = (count + 8) // 9
-    remaining = count
-    for _ in range(pages):
-        n_this_page = min(9, remaining)
-        # 6 vertical labels (slot indices 0..5)
-        for i, vx in enumerate(VERT_X):
-            if i < n_this_page:
-                if SHOW_DIELINE:
-                    draw_dieline_outline_for_label(c, vx, VERT_Y, VERT_W, VERT_H, vertical=True)
-                draw_vertical_label(c, vx, VERT_Y, VERT_W, VERT_H)
-        # 3 horizontal labels (slot indices 6..8)
-        for i, hy in enumerate(HORIZ_Y):
-            if (i + 6) < n_this_page:
-                if SHOW_DIELINE:
-                    draw_dieline_outline_for_label(c, HORIZ_X, hy, HORIZ_W, HORIZ_H, vertical=False)
-                draw_horizontal_label(c, HORIZ_X, hy, HORIZ_W, HORIZ_H)
-        remaining -= n_this_page
-        c.showPage()
+    # 6 vertical labels at top (slots 1..6)
+    for i, vx in enumerate(VERT_X):
+        slot_num = i + 1
+        if slot_num in slots:
+            if SHOW_DIELINE:
+                draw_dieline_outline_for_label(c, vx, VERT_Y, VERT_W, VERT_H, vertical=True)
+            draw_vertical_label(c, vx, VERT_Y, VERT_W, VERT_H)
 
+    # 3 horizontal labels at bottom (slots 7..9)
+    for i, hy in enumerate(HORIZ_Y):
+        slot_num = i + 7
+        if slot_num in slots:
+            if SHOW_DIELINE:
+                draw_dieline_outline_for_label(c, HORIZ_X, hy, HORIZ_W, HORIZ_H, vertical=False)
+            draw_horizontal_label(c, HORIZ_X, hy, HORIZ_W, HORIZ_H)
+
+    c.showPage()
     c.save()
     if isinstance(out_path, str):
         print(f"Wrote: {out_path}")
@@ -510,23 +536,21 @@ def safe_filename(s):
     return "".join(ch if ch.isalnum() or ch in (" ", "_", "-") else "_" for ch in s).strip().replace(" ", "_")
 
 
-def build_sheet_bytes(product_name, ingredients, price="", allergens="", count=9):
+def build_sheet_bytes(product_name, ingredients, price="", allergens="", packed_on="", best_by="", slots=None):
     """Library entry point used by the web service.
 
     Renders one 9-up sheet using the provided fields and returns the PDF bytes.
     Applies the same Faraz Modern '&' kerning fix and price-with-or-without-$
-    tolerance the desktop CLI uses.
+    tolerance the desktop CLI uses. Pass `slots=[1,3,5]` to render only those
+    label positions; omit / None for all 9.
     """
     import io
-    global PRODUCT_NAME, INGREDIENTS, PRICE, ALLERGENS
+    global PRODUCT_NAME, INGREDIENTS, PRICE, ALLERGENS, PACKED_ON, BEST_BY
 
-    # Normalize price: tolerate both "$9" and "9"; prepend $ if missing.
     p = (price or "").strip()
     if p and not p.startswith("$") and any(ch.isdigit() for ch in p):
         p = "$" + p
 
-    # Apply Faraz Modern '&' kerning fix (replace & with 'and') in BOTH title
-    # and ingredients before rendering. Same convention as the cabinet kit.
     def fix(s):
         return (s or "").replace("&", "and").replace("  ", " ").strip()
 
@@ -534,14 +558,16 @@ def build_sheet_bytes(product_name, ingredients, price="", allergens="", count=9
     INGREDIENTS = fix(ingredients)
     PRICE = p
     ALLERGENS = fix(allergens)
+    PACKED_ON = (packed_on or "").strip()
+    BEST_BY = (best_by or "").strip()
 
     buf = io.BytesIO()
-    build_sheet(buf, count=count)
+    build_sheet(buf, slots=slots)
     return buf.getvalue()
 
 
 
-def audit_label_content(product_name, ingredients, price="", allergens=""):
+def audit_label_content(product_name, ingredients, price="", allergens="", packed_on="", best_by=""):
     """Dry-run the layout and report whether all text fits.
 
     Returns dict with fits (bool overall) plus details for both vertical and
@@ -549,7 +575,7 @@ def audit_label_content(product_name, ingredients, price="", allergens=""):
     """
     import io
     from reportlab.pdfgen.canvas import Canvas
-    global PRODUCT_NAME, INGREDIENTS, PRICE, ALLERGENS
+    global PRODUCT_NAME, INGREDIENTS, PRICE, ALLERGENS, PACKED_ON, BEST_BY
 
     p = (price or "").strip()
     if p and not p.startswith("$") and any(ch.isdigit() for ch in p):
@@ -562,6 +588,8 @@ def audit_label_content(product_name, ingredients, price="", allergens=""):
     INGREDIENTS = fix(ingredients)
     PRICE = p
     ALLERGENS = fix(allergens)
+    PACKED_ON = (packed_on or "").strip()
+    BEST_BY = (best_by or "").strip()
 
     # Render onto a throwaway canvas at the vertical info-rect size (the constraining one).
     # Vertical label info rect: width=VERT_W, height=V_TOP_RECT_END (after rotation).

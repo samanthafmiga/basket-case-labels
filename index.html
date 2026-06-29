@@ -54,6 +54,29 @@
   .price-row .dollar { color: var(--muted); font-size: 18px; }
   .product-row { display: flex; gap: 8px; align-items: stretch; }
   .product-row input { flex: 1; }
+  /* Slot picker — visual representation of the OL9016WJ sheet */
+  .slot-help { margin: 12px 0 8px; color: var(--muted); font-size: 13px; }
+  .sheet-mock {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
+    padding: 14px; max-width: 460px;
+  }
+  .sheet-vert { display: flex; gap: 6px; margin-bottom: 10px; }
+  .sheet-horiz { display: flex; flex-direction: column; gap: 6px; }
+  .slot {
+    background: white; border: 1.5px solid var(--line); border-radius: 3px;
+    cursor: pointer; font: inherit; font-size: 12px; color: var(--muted);
+    display: flex; align-items: center; justify-content: center;
+    transition: background .12s, border-color .12s, color .12s;
+    padding: 0;
+  }
+  .slot.v { width: 38px; height: 110px; }
+  .slot.v span { writing-mode: vertical-rl; transform: rotate(180deg); letter-spacing: 1px; }
+  .slot.h { width: 100%; height: 28px; }
+  .slot.selected {
+    background: var(--accent); border-color: var(--accent); color: white;
+  }
+  .slot:hover:not(.selected) { border-color: var(--accent); color: var(--accent); }
+  .slot-actions { display: flex; gap: 8px; margin-top: 12px; }
   .btn-secondary {
     background: white; color: var(--ink);
     border: 1px solid var(--line); border-radius: 4px;
@@ -92,13 +115,42 @@
       <label>Price <span class="hint">(number — $ added automatically)</span>
         <div class="price-row"><span class="dollar">$</span><input id="price" type="text" placeholder="9" autocomplete="off"></div>
       </label>
-      <label>Labels needed <span class="hint">(9 per sheet — extra labels stay blank)</span>
-        <input id="count" type="number" min="1" max="99" value="9" autocomplete="off">
+      <label>Allergens <span class="hint">(optional)</span>
+        <input id="allergens" type="text" placeholder="Contains: nuts" autocomplete="off">
       </label>
     </div>
-    <label>Allergens <span class="hint">(optional)</span>
-      <input id="allergens" type="text" placeholder="Contains: nuts" autocomplete="off">
-    </label>
+    <div class="row">
+      <label>Packed On <span class="hint">(required)</span>
+        <input id="packedOn" type="date" required autocomplete="off">
+      </label>
+      <label>Best By <span class="hint">(required)</span>
+        <input id="bestBy" type="date" required autocomplete="off">
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Which labels on the sheet?</legend>
+    <p class="slot-help"><span id="slotCount">9</span> of 9 selected · click a slot to skip blank labels you don't want to print over.</p>
+    <div class="sheet-mock">
+      <div class="sheet-vert">
+        <button type="button" class="slot v selected" data-slot="1" aria-pressed="true"><span>1</span></button>
+        <button type="button" class="slot v selected" data-slot="2" aria-pressed="true"><span>2</span></button>
+        <button type="button" class="slot v selected" data-slot="3" aria-pressed="true"><span>3</span></button>
+        <button type="button" class="slot v selected" data-slot="4" aria-pressed="true"><span>4</span></button>
+        <button type="button" class="slot v selected" data-slot="5" aria-pressed="true"><span>5</span></button>
+        <button type="button" class="slot v selected" data-slot="6" aria-pressed="true"><span>6</span></button>
+      </div>
+      <div class="sheet-horiz">
+        <button type="button" class="slot h selected" data-slot="7" aria-pressed="true"><span>7</span></button>
+        <button type="button" class="slot h selected" data-slot="8" aria-pressed="true"><span>8</span></button>
+        <button type="button" class="slot h selected" data-slot="9" aria-pressed="true"><span>9</span></button>
+      </div>
+    </div>
+    <div class="slot-actions">
+      <button type="button" id="selAll" class="btn-secondary">Select all</button>
+      <button type="button" id="selNone" class="btn-secondary">Clear all</button>
+    </div>
     <div id="fitcheck" class="fitcheck" hidden></div>
     <div class="actions">
       <button id="build">Build &amp; Download PDF</button>
@@ -237,6 +289,8 @@ async function runPreview() {
         ingredients,
         price: $('price').value.trim(),
         allergens: $('allergens').value.trim(),
+        packedOn: fmtDate($('packedOn').value.trim()),
+        bestBy: fmtDate($('bestBy').value.trim()),
       }),
     });
     if (!res.ok) return;
@@ -267,15 +321,59 @@ $('clearBtn').addEventListener('click', () => {
   $('product').focus();
 });
 
+// Format YYYY-MM-DD (from <input type="date">) into the short M/D the label uses.
+function fmtDate(iso) {
+  if (!iso) return "";
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(iso);
+  if (!m) return iso;
+  return `${parseInt(m[2],10)}/${parseInt(m[3],10)}`;
+}
+
+// Prefill: Packed On = today, Best By = today + 5 days.
+(function prefillDates() {
+  const t = new Date();
+  const b = new Date(); b.setDate(b.getDate() + 5);
+  const isoToday = t.toISOString().slice(0,10);
+  const isoBest  = b.toISOString().slice(0,10);
+  if (!$('packedOn').value) $('packedOn').value = isoToday;
+  if (!$('bestBy').value)   $('bestBy').value   = isoBest;
+})();
+
+// Slot picker wiring
+function updateSlotCount() {
+  const n = document.querySelectorAll('.slot.selected').length;
+  $('slotCount').textContent = n;
+}
+document.querySelectorAll('.slot').forEach(b => {
+  b.addEventListener('click', () => {
+    b.classList.toggle('selected');
+    b.setAttribute('aria-pressed', b.classList.contains('selected'));
+    updateSlotCount();
+  });
+});
+$('selAll').addEventListener('click', () => {
+  document.querySelectorAll('.slot').forEach(b => { b.classList.add('selected'); b.setAttribute('aria-pressed','true'); });
+  updateSlotCount();
+});
+$('selNone').addEventListener('click', () => {
+  document.querySelectorAll('.slot').forEach(b => { b.classList.remove('selected'); b.setAttribute('aria-pressed','false'); });
+  updateSlotCount();
+});
+["packedOn","bestBy"].forEach(id => $(id).addEventListener('change', schedulePreview));
+
 $('build').addEventListener('click', async () => {
   const productName = $('product').value.trim();
   const ingredients = $('ingredients').value.trim();
   const price       = $('price').value.trim();
   const allergens   = $('allergens').value.trim();
-  const countRaw    = $('count').value.trim();
-  const count       = Math.max(1, Math.min(99, parseInt(countRaw || "9", 10) || 9));
+  const packedOn    = $('packedOn').value.trim();
+  const bestBy      = $('bestBy').value.trim();
+  const slots       = Array.from(document.querySelectorAll('.slot.selected')).map(b => parseInt(b.dataset.slot, 10));
   if (!productName) return setStatus("Product name is required.", "error");
   if (!ingredients) return setStatus("Ingredients are required.", "error");
+  if (!packedOn)    return setStatus("Packed On is required.", "error");
+  if (!bestBy)      return setStatus("Best By is required.", "error");
+  if (!slots.length) return setStatus("Select at least one label slot.", "error");
 
   // Force a fresh fit-check synchronously so users can't bypass a stale preview.
   await runPreview();
@@ -291,7 +389,7 @@ $('build').addEventListener('click', async () => {
     const res = await fetch("/api/build", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productName, ingredients, price, allergens, count }),
+      body: JSON.stringify({ productName, ingredients, price, allergens, packedOn: fmtDate(packedOn), bestBy: fmtDate(bestBy), slots }),
     });
     if (!res.ok) {
       let msg = `${res.status}`;
