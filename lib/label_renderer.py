@@ -283,9 +283,16 @@ def _render_info_block(c, info_w, info_h, pad=0.10):
         c._title_overflowed_lines = max(0, len(lines) - 2)
     cur_y -= 4
 
-    # Ingredients — body font, wrapped. Auto-shrink so the WHOLE list fits.
+    # ---- Allergens pre-compute (so ingredients can reserve room for them) ----
+    allergen_size = 6.5
+    allergen_lh = allergen_size + 1.5
+    allergen_gap = 4  # pt of breathing room above the allergen block
+    pre_allergen_lines = _wrap_text(c, ALLERGENS, BODY_ITALIC, allergen_size, inner_w) if ALLERGENS else []
+    allergen_block_h = (len(pre_allergen_lines) * allergen_lh + allergen_gap) if ALLERGENS else 0
+
+    # ---- Ingredients — body font, wrapped. Auto-shrink so the WHOLE list fits. ----
     ing_y_start = cur_y
-    avail_h = ing_y_start - bottom_anchor - (10 if ALLERGENS else 0)
+    avail_h = ing_y_start - bottom_anchor - allergen_block_h
     chosen_size = None
     chosen_lines = None
     for try_size in (6.5, 6.0, 5.5, 5.0):
@@ -297,7 +304,6 @@ def _render_info_block(c, info_w, info_h, pad=0.10):
             break
     ingredient_overflow_lines = 0
     if chosen_lines is None:
-        # Even at the smallest size it won't fit — render what we can and flag the rest.
         chosen_size = 5.0
         chosen_lines = _wrap_text(c, INGREDIENTS, BODY_FONT, chosen_size, inner_w)
     ing_size = chosen_size
@@ -305,23 +311,29 @@ def _render_info_block(c, info_w, info_h, pad=0.10):
     c.setFont(BODY_FONT, ing_size)
     drawn = 0
     for ln in chosen_lines:
-        if cur_y - line_h < bottom_anchor:
+        if cur_y - line_h < bottom_anchor + allergen_block_h:
             break
         cur_y -= line_h
         c.drawString(x0, cur_y, ln)
         drawn += 1
     ingredient_overflow_lines = len(chosen_lines) - drawn
 
-    # Allergens (optional) — italic, accent color
-    allergens_drawn = True
+    # ---- Allergens — italic, accent color, drop a full ingredient line below the last ----
+    allergens_drawn_lines = 0
     if ALLERGENS:
-        cur_y -= 4
-        if cur_y > bottom_anchor:
-            c.setFont(BODY_ITALIC, 6.5)
-            c.setFillColor(ACCENT)
-            c.drawString(x0, cur_y, ALLERGENS)
-        else:
-            allergens_drawn = False
+        # Move below the last ingredient line + gap, so we don't overlap.
+        cur_y -= (line_h - (line_h - allergen_lh)) + allergen_gap  # = allergen_lh + allergen_gap
+        c.setFont(BODY_ITALIC, allergen_size)
+        c.setFillColor(ACCENT)
+        for ln in pre_allergen_lines:
+            if cur_y < bottom_anchor:
+                break
+            c.drawString(x0, cur_y, ln)
+            allergens_drawn_lines += 1
+            cur_y -= allergen_lh
+        # Restore ink color for any future draws on this canvas instance.
+        c.setFillColor(INK)
+    allergens_fit = (allergens_drawn_lines == len(pre_allergen_lines))
 
     # Stash audit results on the canvas so callers can read them out.
     if not hasattr(c, "_audit"):
@@ -330,7 +342,9 @@ def _render_info_block(c, info_w, info_h, pad=0.10):
             "ingredientLinesShown": drawn,
             "ingredientFontSize": ing_size,
             "ingredientsFit": ingredient_overflow_lines == 0,
-            "allergensFit": allergens_drawn,
+            "allergenLinesTotal": len(pre_allergen_lines),
+            "allergenLinesShown": allergens_drawn_lines,
+            "allergensFit": allergens_fit,
             "titleAutoSize": name_size,
             "titleFits": True,
         }
