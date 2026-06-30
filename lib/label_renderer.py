@@ -126,7 +126,7 @@ LOGO_SHIFT_RIGHT = 0.15  # inches  (was 0.10)
 # relative to where the die-cuts actually sit. Update Jun 30 from Sam's print
 # test: content was landing ~1/16" right and ~1/16" low → shift content
 # LEFT (negative X) and UP (positive Y) by the same amount.
-GLOBAL_X_NUDGE = -0.0625  # inches; negative shifts content LEFT
+GLOBAL_X_NUDGE = -0.03125  # inches; negative shifts content LEFT (was -0.0625; nudged right 1/32" per Sam Jun 30)
 GLOBAL_Y_NUDGE = +0.0625  # inches; positive shifts content UP
 
 # Positive LOGO_SHIFT_UP moves the logo art toward the top of the small square.
