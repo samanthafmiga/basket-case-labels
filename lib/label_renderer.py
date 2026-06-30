@@ -121,6 +121,14 @@ H_RIGHT_RECT_START = 4.50  # tweaked from 4.75 so logo box has more room and mat
 # small-square (toward where "BASKET CASE" wordmark would land).
 LOGO_SHIFT_RIGHT = 0.15  # inches  (was 0.10)
 
+# Global sheet-wide nudge — applies to ALL 9 labels uniformly. Use these to
+# compensate for the printer's tendency to shift the whole content frame
+# relative to where the die-cuts actually sit. Update Jun 30 from Sam's print
+# test: content was landing ~1/16" right and ~1/16" low → shift content
+# LEFT (negative X) and UP (positive Y) by the same amount.
+GLOBAL_X_NUDGE = -0.0625  # inches; negative shifts content LEFT
+GLOBAL_Y_NUDGE = +0.0625  # inches; positive shifts content UP
+
 # Positive LOGO_SHIFT_UP moves the logo art toward the top of the small square.
 # Increase if the wine-bottle cap is getting clipped at the top of the print.
 LOGO_SHIFT_UP = 0.05  # inches
@@ -445,7 +453,8 @@ def draw_horizontal_label(c, x, y, w, h):
     label_left_pt   = x * inch
 
     c.saveState()
-    c.translate(label_left_pt, label_bottom_pt)
+    c.translate(label_left_pt + GLOBAL_X_NUDGE * inch,
+                label_bottom_pt + GLOBAL_Y_NUDGE * inch)
     _draw_horizontal_layout(c, w * inch, h * inch)
     c.restoreState()
 
@@ -471,7 +480,8 @@ def draw_vertical_label(c, x, y, w, h):
 
     c.saveState()
     # Place ourselves at vertical label's bottom-left in PDF coords.
-    c.translate(label_left_pt, label_bottom_pt)
+    c.translate(label_left_pt + GLOBAL_X_NUDGE * inch,
+                label_bottom_pt + GLOBAL_Y_NUDGE * inch)
     # Now apply a transform such that drawing in the (h_pt × w_pt) horizontal-
     # layout coordinate space lands inside the (w_pt × h_pt) vertical rectangle.
     # Math: translate(0, h_pt) then rotate(-90) maps horizontal block (xh, yh)
