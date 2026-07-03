@@ -56,6 +56,30 @@ def api_labels():
     return jsonify({"labels": kv_store.get_labels(), "kvEnabled": kv_store.kv_enabled()})
 
 
+@app.route("/api/labels/save", methods=["POST"])
+def api_labels_save():
+    """Register a label from the recipes app (or any external caller).
+
+    Accepts the same shape as internal auto-save: {productName, ingredients, price, allergens}.
+    Optionally accepts {category, subType} for framework linkage — stored in the KV alongside.
+    """
+    body = request.get_json(silent=True) or {}
+    if not body.get("productName"):
+        return jsonify({"error": "productName is required"}), 400
+    try:
+        updated = kv_store.add_label({
+            "productName": body["productName"],
+            "ingredients": body.get("ingredients", ""),
+            "price":       body.get("price", ""),
+            "allergens":   body.get("allergens", ""),
+            "category":    body.get("category", ""),
+            "subType":     body.get("subType", ""),
+        })
+    except Exception as e:
+        return jsonify({"error": f"Save failed: {e}"}), 500
+    return jsonify({"saved": True, "labels_count": len(updated)})
+
+
 @app.route("/api/build", methods=["POST"])
 def api_build():
     body = request.get_json(silent=True) or {}
