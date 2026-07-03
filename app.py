@@ -74,6 +74,9 @@ def api_labels_save():
             "allergens":   body.get("allergens", ""),
             "category":    body.get("category", ""),
             "subType":     body.get("subType", ""),
+            # NEW: instructions from recipes app
+            "method":      body.get("method", ""),
+            "servingNote": body.get("servingNote", ""),
         })
     except Exception as e:
         return jsonify({"error": f"Save failed: {e}"}), 500
