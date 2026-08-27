@@ -105,8 +105,6 @@ def api_build():
         return jsonify({"error": "productName is required"}), 400
     if not ingredients:
         return jsonify({"error": "ingredients is required"}), 400
-    if not packed_on:
-        return jsonify({"error": "packedOn is required"}), 400
     if not best_by:
         return jsonify({"error": "bestBy is required"}), 400
 

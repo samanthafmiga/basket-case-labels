@@ -156,8 +156,8 @@
     </label>
     <input id="allergens" type="hidden" value="">
     <div class="row">
-      <label>Packed On <span class="hint">(required)</span>
-        <input id="packedOn" type="date" required autocomplete="off">
+      <label>Packed On <span class="hint">(optional)</span>
+        <input id="packedOn" type="date" autocomplete="off">
       </label>
       <label>Best By <span class="hint">(required)</span>
         <input id="bestBy" type="date" required autocomplete="off">
@@ -452,7 +452,6 @@ $('build').addEventListener('click', async () => {
   const slots       = Array.from(document.querySelectorAll('.slot.selected')).map(b => parseInt(b.dataset.slot, 10));
   if (!productName) return setStatus("Product name is required.", "error");
   if (!ingredients) return setStatus("Ingredients are required.", "error");
-  if (!packedOn)    return setStatus("Packed On is required.", "error");
   if (!bestBy)      return setStatus("Best By is required.", "error");
   if (!slots.length) return setStatus("Select at least one label slot.", "error");
 
