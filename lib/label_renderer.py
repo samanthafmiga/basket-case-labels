@@ -556,6 +556,73 @@ def build_sheet(out_path, slots=None):
         print(f"Wrote: {out_path}")
 
 
+def _draw_small_label(c, w_pt, h_pt, product_name, price):
+    """
+    Draw a single 2x1 in. thermal label (LLIKED / 4BARCODE stock).
+    Just product name + price, centered, sized to fit.
+    Coordinates: (0,0) is bottom-left of the label area.
+    """
+    pad = 0.08 * inch
+    inner_w = w_pt - 2 * pad
+    inner_h = h_pt - 2 * pad
+
+    has_price = bool((price or "").strip())
+    price_band_h = 0.34 * inch if has_price else 0
+    name_band_h = inner_h - price_band_h
+
+    text = (product_name or "").upper().strip()
+    size = 8
+    lines = [text]
+    total = 0
+    for try_size in (22, 20, 18, 16, 15, 14, 13, 12, 11, 10, 9, 8):
+        try_lines = _wrap_text(c, text, TITLE_FONT, try_size, inner_w)
+        line_h_try = try_size * 1.05
+        try_total = line_h_try * len(try_lines)
+        if try_total <= name_band_h and len(try_lines) <= 4:
+            size = try_size
+            lines = try_lines
+            total = try_total
+            break
+    else:
+        size = 8
+        lines = _wrap_text(c, text, TITLE_FONT, size, inner_w)
+        total = size * 1.05 * len(lines)
+
+    c.setFillColor(INK)
+    c.setFont(TITLE_FONT, size)
+    line_h = size * 1.05
+    start_y = pad + price_band_h + (name_band_h + total) / 2 - size
+    for i, ln in enumerate(lines):
+        y = start_y - i * line_h
+        c.drawCentredString(w_pt / 2, y, ln)
+
+    if has_price:
+        p = price.strip()
+        if not p.startswith("$") and any(ch.isdigit() for ch in p):
+            p = "$" + p
+        psize = 16
+        for try_size in (30, 28, 26, 24, 22, 20, 18, 16):
+            if c.stringWidth(p, BODY_BOLD, try_size) <= inner_w:
+                psize = try_size
+                break
+        c.setFont(BODY_BOLD, psize)
+        py = pad + (price_band_h - psize) / 2 + psize * 0.15
+        c.drawCentredString(w_pt / 2, py, p)
+
+
+def build_small_label_bytes(product_name, price=""):
+    """Render a single 2" x 1" thermal label PDF (name + price only)."""
+    import io
+    buf = io.BytesIO()
+    page_size = (2 * inch, 1 * inch)
+    c = canvas.Canvas(buf, pagesize=page_size)
+    c.setTitle(f"Basket Case Small Label - {product_name}")
+    _draw_small_label(c, page_size[0], page_size[1], product_name, price)
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
 def safe_filename(s):
     return "".join(ch if ch.isalnum() or ch in (" ", "_", "-") else "_" for ch in s).strip().replace(" ", "_")
 

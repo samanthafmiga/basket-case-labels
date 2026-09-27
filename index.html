@@ -104,6 +104,18 @@
   .fitcheck.ok      { background: #f3f6ee; color: #4a5b39; border-color: var(--accent); }
   .fitcheck.warn    { background: #fdf3ef; color: #7a2a1d; border-color: var(--danger); }
   .fitcheck strong  { display: block; margin-bottom: 4px; }
+
+  /* Small-label mode toggle */
+  .modepick { display:flex; gap:8px; margin: 4px 0 16px; flex-wrap: wrap; }
+  .modepick label {
+    flex:1; min-width: 220px; margin:0; padding: 10px 14px; border:1px solid var(--line);
+    border-radius: 4px; background: white; cursor: pointer; display:flex; gap:10px; align-items:flex-start;
+  }
+  .modepick label.on { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(90,107,71,0.15); }
+  .modepick input { margin-top: 3px; }
+  .modepick .m-title { font-weight:bold; font-size:14px; display:block; }
+  .modepick .m-sub { color: var(--muted); font-size: 12px; margin-top: 2px; display:block; }
+  .mode-hidden { display: none !important; }
 </style>
 </head>
 <body>
@@ -114,6 +126,20 @@
   </div>
 </header>
 <main>
+  <fieldset class="mode-fieldset">
+    <legend>Label Type</legend>
+    <div class="modepick" id="modepick">
+      <label class="on"><input type="radio" name="mode" value="sheet" checked>
+        <span><span class="m-title">Prepared Foods Sheet (OL9016WJ)</span>
+          <span class="m-sub">9-up sheet · full ingredients, allergens, dates</span></span>
+      </label>
+      <label><input type="radio" name="mode" value="small">
+        <span><span class="m-title">Small 2×1 Thermal Label</span>
+          <span class="m-sub">Single label · name + price only · 4BARCODE printer</span></span>
+      </label>
+    </div>
+  </fieldset>
+
   <fieldset>
     <legend>Product</legend>
     <label>Product name <span class="hint">(<span id="repoHint">type to search saved labels</span> · rendered ALL CAPS)</span>
@@ -123,7 +149,7 @@
         <datalist id="labelOptions"></datalist>
       </div>
     </label>
-    <label>Ingredients <span class="hint">(comma-separated)</span>
+    <label class="sheet-only">Ingredients <span class="hint">(comma-separated)</span>
       <textarea id="ingredients" placeholder="e.g. Green Grapes, Prosciutto, Milk, Garlic, Pepper, Parsley, Chives"></textarea>
     </label>
     <div class="row">
@@ -132,7 +158,7 @@
       </label>
     </div>
 
-    <label>Allergens &amp; claims <span class="hint">(tap to toggle — selected items print on the label)</span></label>
+    <div class="sheet-only" id="sheetOnlyBlock"><label>Allergens &amp; claims <span class="hint">(tap to toggle — selected items print on the label)</span></label>
     <div class="chip-group" id="allergenChips" data-group="Allergens">
       <button type="button" class="chip" data-value="Contains Nuts">Contains Nuts</button>
       <button type="button" class="chip" data-value="Contains Peanuts">Contains Peanuts</button>
@@ -163,9 +189,10 @@
         <input id="bestBy" type="date" required autocomplete="off">
       </label>
     </div>
+    </div>
   </fieldset>
 
-  <fieldset>
+  <fieldset class="sheet-only">
     <legend>Which labels on the sheet?</legend>
     <p class="slot-help"><span id="slotCount">9</span> of 9 selected · click a slot to skip blank labels you don't want to print over.</p>
     <div class="sheet-mock">
@@ -442,24 +469,51 @@ document.querySelectorAll('.chip').forEach(c => {
 });
 $('allergensCustom').addEventListener('input', () => { syncAllergensHidden(); schedulePreview(); });
 
-$('build').addEventListener('click', async () => {
-  const productName = $('product').value.trim();
-  const ingredients = $('ingredients').value.trim();
-  const price       = $('price').value.trim();
-  const allergens   = $('allergens').value.trim();
-  const packedOn    = $('packedOn').value.trim();
-  const bestBy      = $('bestBy').value.trim();
-  const slots       = Array.from(document.querySelectorAll('.slot.selected')).map(b => parseInt(b.dataset.slot, 10));
-  if (!productName) return setStatus("Product name is required.", "error");
-  if (!ingredients) return setStatus("Ingredients are required.", "error");
-  if (!bestBy)      return setStatus("Best By is required.", "error");
-  if (!slots.length) return setStatus("Select at least one label slot.", "error");
+function currentMode() {
+  const r = document.querySelector('input[name="mode"]:checked');
+  return r ? r.value : 'sheet';
+}
+function applyMode() {
+  const isSmall = currentMode() === 'small';
+  document.querySelectorAll('.sheet-only').forEach(el => el.classList.toggle('mode-hidden', isSmall));
+  document.querySelectorAll('#modepick label').forEach(lb => {
+    lb.classList.toggle('on', lb.querySelector('input').checked);
+  });
+  const s = $('status');
+  if (isSmall) s.innerHTML = 'Prints one 2×1 label — 4BARCODE preset, Landscape, Actual Size.';
+  else s.innerHTML = 'Print at <strong>Actual Size / 100%</strong> — never Fit to Page.';
+  // Change build-button label
+  const btn = $('build');
+  if (btn) btn.textContent = isSmall ? 'Build & Download 2×1 PDF' : 'Build & Download PDF';
+}
+document.querySelectorAll('input[name="mode"]').forEach(r => r.addEventListener('change', applyMode));
+applyMode();
 
-  // Force a fresh fit-check synchronously so users can't bypass a stale preview.
-  await runPreview();
-  if (!_previewLastFit) {
-    const proceed = confirm("Heads up — the text won't all fit on the label. Build anyway?");
-    if (!proceed) return;
+$('build').addEventListener('click', async () => {
+  const mode        = currentMode();
+  const productName = $('product').value.trim();
+  const price       = $('price').value.trim();
+  if (!productName) return setStatus("Product name is required.", "error");
+
+  let payload;
+  if (mode === 'small') {
+    payload = { mode, productName, price };
+  } else {
+    const ingredients = $('ingredients').value.trim();
+    const allergens   = $('allergens').value.trim();
+    const packedOn    = $('packedOn').value.trim();
+    const bestBy      = $('bestBy').value.trim();
+    const slots       = Array.from(document.querySelectorAll('.slot.selected')).map(b => parseInt(b.dataset.slot, 10));
+    if (!ingredients) return setStatus("Ingredients are required.", "error");
+    if (!bestBy)      return setStatus("Best By is required.", "error");
+    if (!slots.length) return setStatus("Select at least one label slot.", "error");
+
+    await runPreview();
+    if (!_previewLastFit) {
+      const proceed = confirm("Heads up — the text won't all fit on the label. Build anyway?");
+      if (!proceed) return;
+    }
+    payload = { mode, productName, ingredients, price, allergens, packedOn: fmtDate(packedOn), bestBy: fmtDate(bestBy), slots };
   }
 
   const btn = $('build'); btn.disabled = true;
@@ -469,7 +523,7 @@ $('build').addEventListener('click', async () => {
     const res = await fetch("/api/build", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productName, ingredients, price, allergens, packedOn: fmtDate(packedOn), bestBy: fmtDate(bestBy), slots }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       let msg = `${res.status}`;
@@ -480,7 +534,7 @@ $('build').addEventListener('click', async () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Basket_Case_Labels_${safe(productName.toUpperCase())}.pdf`;
+    a.download = `${mode === 'small' ? 'Basket_Case_Small' : 'Basket_Case_Labels'}_${safe(productName.toUpperCase())}.pdf`;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     setStatus("Downloaded. Print at <strong>Actual Size / 100%</strong>.", "ok"); loadSavedLabels();

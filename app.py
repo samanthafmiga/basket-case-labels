@@ -14,7 +14,7 @@ _ROOT = os.path.dirname(os.path.abspath(__file__))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from lib.label_renderer import build_sheet_bytes, safe_filename, audit_label_content
+from lib.label_renderer import build_sheet_bytes, build_small_label_bytes, safe_filename, audit_label_content
 from lib import kv_store
 
 app = Flask(__name__, static_folder=None)
@@ -87,6 +87,26 @@ def api_labels_save():
 def api_build():
     body = request.get_json(silent=True) or {}
     product = (body.get("productName") or "").strip()
+    mode = (body.get("mode") or "sheet").strip().lower()
+
+    # ---- Small 2x1 thermal label mode (name + price only) ----
+    if mode == "small":
+        if not product:
+            return jsonify({"error": "productName is required"}), 400
+        small_price = (body.get("price") or "").strip()
+        try:
+            pdf = build_small_label_bytes(product, small_price)
+        except Exception as e:
+            return jsonify({"error": f"Render failed: {e}"}), 500
+        fname = f"Basket_Case_Small_{safe_filename(product.upper())}.pdf"
+        return send_file(
+            io.BytesIO(pdf),
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=fname,
+        )
+
+    # ---- Default: full prepared-foods sheet ----
     ingredients = (body.get("ingredients") or "").strip()
     price = (body.get("price") or "").strip()
     allergens = (body.get("allergens") or "").strip()
