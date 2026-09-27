@@ -89,13 +89,14 @@ def api_build():
     product = (body.get("productName") or "").strip()
     mode = (body.get("mode") or "sheet").strip().lower()
 
-    # ---- Small 2x1 thermal label mode (name + price only) ----
+    # ---- Small 2x1 thermal label mode (name + price [+ tiny ingredients]) ----
     if mode == "small":
         if not product:
             return jsonify({"error": "productName is required"}), 400
         small_price = (body.get("price") or "").strip()
+        small_ing = (body.get("ingredients") or "").strip()
         try:
-            pdf = build_small_label_bytes(product, small_price)
+            pdf = build_small_label_bytes(product, small_price, small_ing)
         except Exception as e:
             return jsonify({"error": f"Render failed: {e}"}), 500
         fname = f"Basket_Case_Small_{safe_filename(product.upper())}.pdf"

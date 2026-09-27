@@ -556,68 +556,119 @@ def build_sheet(out_path, slots=None):
         print(f"Wrote: {out_path}")
 
 
-def _draw_small_label(c, w_pt, h_pt, product_name, price):
+def _draw_small_label(c, w_pt, h_pt, product_name, price, ingredients=""):
     """
     Draw a single 2x1 in. thermal label (LLIKED / 4BARCODE stock).
-    Just product name + price, centered, sized to fit.
+    Layout:
+      - Top band: product name (bold, shrink-to-fit, up to 2 lines) + price at right
+      - Bottom band: tiny ingredients text, wrapped, if provided
     Coordinates: (0,0) is bottom-left of the label area.
     """
-    pad = 0.08 * inch
+    pad = 0.06 * inch
     inner_w = w_pt - 2 * pad
     inner_h = h_pt - 2 * pad
 
     has_price = bool((price or "").strip())
-    price_band_h = 0.34 * inch if has_price else 0
-    name_band_h = inner_h - price_band_h
+    has_ing = bool((ingredients or "").strip())
 
-    text = (product_name or "").upper().strip()
-    size = 8
-    lines = [text]
-    total = 0
-    for try_size in (22, 20, 18, 16, 15, 14, 13, 12, 11, 10, 9, 8):
-        try_lines = _wrap_text(c, text, TITLE_FONT, try_size, inner_w)
-        line_h_try = try_size * 1.05
-        try_total = line_h_try * len(try_lines)
-        if try_total <= name_band_h and len(try_lines) <= 4:
-            size = try_size
-            lines = try_lines
-            total = try_total
-            break
-    else:
-        size = 8
-        lines = _wrap_text(c, text, TITLE_FONT, size, inner_w)
-        total = size * 1.05 * len(lines)
+    # Vertical split: if ingredients present, give them ~40% of height.
+    ing_band_h = 0.42 * inner_h if has_ing else 0
+    top_band_h = inner_h - ing_band_h
 
-    c.setFillColor(INK)
-    c.setFont(TITLE_FONT, size)
-    line_h = size * 1.05
-    start_y = pad + price_band_h + (name_band_h + total) / 2 - size
-    for i, ln in enumerate(lines):
-        y = start_y - i * line_h
-        c.drawCentredString(w_pt / 2, y, ln)
-
+    # ---- Price (drawn first so we know how much horizontal room the name has) ----
+    price_w = 0
     if has_price:
         p = price.strip()
         if not p.startswith("$") and any(ch.isdigit() for ch in p):
             p = "$" + p
-        psize = 16
-        for try_size in (30, 28, 26, 24, 22, 20, 18, 16):
-            if c.stringWidth(p, BODY_BOLD, try_size) <= inner_w:
+        # Fit price into ~40% of width, top band height.
+        max_price_w = 0.40 * inner_w
+        psize = 10
+        for try_size in (22, 20, 18, 16, 14, 13, 12, 11, 10):
+            if c.stringWidth(p, BODY_BOLD, try_size) <= max_price_w and try_size <= top_band_h * 0.85:
                 psize = try_size
                 break
+        price_w = c.stringWidth(p, BODY_BOLD, psize) + 4  # 4pt gutter
+
+    # ---- Product name (auto-fit into remaining top-band width) ----
+    text = (product_name or "").upper().strip()
+    name_avail_w = inner_w - price_w
+    nsize = 7
+    nlines = [text]
+    ntotal = 0
+    for try_size in (18, 16, 14, 13, 12, 11, 10, 9, 8, 7):
+        try_lines = _wrap_text(c, text, TITLE_FONT, try_size, name_avail_w)
+        line_h_try = try_size * 1.05
+        try_total = line_h_try * len(try_lines)
+        max_lines = 2 if has_ing else 3
+        if try_total <= top_band_h and len(try_lines) <= max_lines:
+            nsize = try_size
+            nlines = try_lines
+            ntotal = try_total
+            break
+    else:
+        nsize = 7
+        nlines = _wrap_text(c, text, TITLE_FONT, nsize, name_avail_w)
+        ntotal = nsize * 1.05 * len(nlines)
+
+    c.setFillColor(INK)
+    c.setFont(TITLE_FONT, nsize)
+    line_h = nsize * 1.05
+    top_band_bottom = pad + ing_band_h
+    # Vertically center name within top band
+    name_start_y = top_band_bottom + (top_band_h + ntotal) / 2 - nsize
+    for i, ln in enumerate(nlines):
+        c.drawString(pad, name_start_y - i * line_h, ln)
+
+    # ---- Draw price right-aligned in top band ----
+    if has_price:
         c.setFont(BODY_BOLD, psize)
-        py = pad + (price_band_h - psize) / 2 + psize * 0.15
-        c.drawCentredString(w_pt / 2, py, p)
+        py = top_band_bottom + (top_band_h - psize) / 2 + psize * 0.15
+        c.drawRightString(pad + inner_w, py, p)
+
+    # ---- Ingredients (very small, wrapped, up to N lines) ----
+    if has_ing:
+        # Try sizes down to 4pt to fit ingredients in the ing band
+        ing_text = ingredients.strip()
+        isize = 4
+        ilines = [ing_text]
+        for try_size in (7, 6, 5.5, 5, 4.5, 4):
+            try_lines = _wrap_text(c, ing_text, BODY_FONT, try_size, inner_w)
+            line_h_try = try_size * 1.10
+            if line_h_try * len(try_lines) <= ing_band_h:
+                isize = try_size
+                ilines = try_lines
+                break
+        else:
+            # Fit as many lines as possible at 4pt; clip the rest
+            isize = 4
+            ilines = _wrap_text(c, ing_text, BODY_FONT, isize, inner_w)
+            max_n = max(1, int(ing_band_h / (isize * 1.10)))
+            ilines = ilines[:max_n]
+
+        c.setFillColor(INK)
+        c.setFont(BODY_FONT, isize)
+        iline_h = isize * 1.10
+        # Draw a very thin separator between top band and ingredients
+        c.setStrokeColor(INK)
+        c.setLineWidth(0.25)
+        sep_y = top_band_bottom - 1
+        c.line(pad, sep_y, pad + inner_w, sep_y)
+        # Start at top of ing band, going down
+        iy = pad + ing_band_h - isize - 1
+        for ln in ilines:
+            c.drawString(pad, iy, ln)
+            iy -= iline_h
 
 
-def build_small_label_bytes(product_name, price=""):
-    """Render a single 2" x 1" thermal label PDF (name + price only)."""
+def build_small_label_bytes(product_name, price="", ingredients=""):
+    """Render a single 2" x 1" thermal label PDF (name + price [+ tiny ingredients])."""
     import io
     buf = io.BytesIO()
     page_size = (2 * inch, 1 * inch)
     c = canvas.Canvas(buf, pagesize=page_size)
     c.setTitle(f"Basket Case Small Label - {product_name}")
-    _draw_small_label(c, page_size[0], page_size[1], product_name, price)
+    _draw_small_label(c, page_size[0], page_size[1], product_name, price, ingredients)
     c.showPage()
     c.save()
     return buf.getvalue()

@@ -149,7 +149,7 @@
         <datalist id="labelOptions"></datalist>
       </div>
     </label>
-    <label class="sheet-only">Ingredients <span class="hint">(comma-separated)</span>
+    <label>Ingredients <span class="hint">(comma-separated)</span>
       <textarea id="ingredients" placeholder="e.g. Green Grapes, Prosciutto, Milk, Garlic, Pepper, Parsley, Chives"></textarea>
     </label>
     <div class="row">
@@ -501,7 +501,8 @@ $('build').addEventListener('click', async () => {
 
   let payload;
   if (mode === 'small') {
-    payload = { mode, productName, price };
+    const ingredients = $('ingredients').value.trim();
+    payload = { mode, productName, price, ingredients };
   } else {
     const ingredients = $('ingredients').value.trim();
     const allergens   = $('allergens').value.trim();
