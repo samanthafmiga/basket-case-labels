@@ -593,22 +593,37 @@ def _draw_small_label(c, w_pt, h_pt, product_name, price, ingredients=""):
     # ---- Product name (auto-fit into remaining top-band width) ----
     text = (product_name or "").upper().strip()
     name_avail_w = inner_w - price_w
-    nsize = 7
+    nsize = 6
     nlines = [text]
     ntotal = 0
-    for try_size in (18, 16, 14, 13, 12, 11, 10, 9, 8, 7):
+    max_lines_cap = 2 if has_ing else 3
+    for try_size in (18, 16, 14, 13, 12, 11, 10, 9, 8, 7, 6):
         try_lines = _wrap_text(c, text, TITLE_FONT, try_size, name_avail_w)
         line_h_try = try_size * 1.05
         try_total = line_h_try * len(try_lines)
-        max_lines = 2 if has_ing else 3
-        if try_total <= top_band_h and len(try_lines) <= max_lines:
+        # Each line must actually fit horizontally (wrap can't split single long words)
+        widest = max((c.stringWidth(ln, TITLE_FONT, try_size) for ln in try_lines), default=0)
+        if widest <= name_avail_w and try_total <= top_band_h and len(try_lines) <= max_lines_cap:
             nsize = try_size
             nlines = try_lines
             ntotal = try_total
             break
     else:
+        # Still too wide at 6pt: force character-level wrap so it never crosses into price
         nsize = 7
-        nlines = _wrap_text(c, text, TITLE_FONT, nsize, name_avail_w)
+        nlines = []
+        cur = ""
+        for ch in text:
+            cand = cur + ch
+            if c.stringWidth(cand, TITLE_FONT, nsize) <= name_avail_w:
+                cur = cand
+            else:
+                if cur:
+                    nlines.append(cur)
+                cur = ch
+        if cur:
+            nlines.append(cur)
+        nlines = nlines[:max_lines_cap]
         ntotal = nsize * 1.05 * len(nlines)
 
     c.setFillColor(INK)
